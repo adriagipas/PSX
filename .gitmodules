@@ -1,0 +1,3 @@
+[submodule "py/CD"]
+	path = py/CD
+	url = https://github.com/adriagipas/CD.git
