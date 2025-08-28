@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2022 Adrià Giménez Pastor.
+ * Copyright 2017-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -350,7 +350,6 @@ static struct
 {
   int mask;
   int v;
-  int old_activation;
 } _ints;
 
 // Requests
@@ -601,15 +600,20 @@ calc_seek_time (void)
 static void
 check_irq (void)
 {
+  PSX_int_interruption ( PSX_INT_CDROM, (_ints.mask&_ints.v)!=0 );
+  /*
 
   int activation;
 
 
   activation= _ints.mask&_ints.v;
   if ( (activation^_ints.old_activation)&activation )
-    PSX_int_interruption ( PSX_INT_CDROM );
+    {
+      PSX_int_interruption ( PSX_INT_CDROM, true );
+      PSX_int_interruption ( PSX_INT_CDROM, false );
+    }
   _ints.old_activation= activation;
-  
+  */
 } // end check_irq
 
 
@@ -2906,7 +2910,9 @@ clock_irq_expired (void)
 
 
 static void
-clock (void)
+clock (
+       const bool update_timing
+       )
 {
 
   int cc;
@@ -2989,7 +2995,7 @@ clock (void)
   
   // Actualitza.
   _timing.cc= 0;
-  update_timing_event ();
+  if ( update_timing ) update_timing_event ();
   
 } // end clock
 
@@ -3068,7 +3074,7 @@ PSX_cd_end_iter (void)
       _timing.cc+= cc;
       _timing.cc_used+= cc;
       if ( _timing.cc >= _timing.cctoEvent )
-        clock ();
+        clock ( true );
     }
   _timing.cc_used= 0;
   
@@ -3164,9 +3170,11 @@ PSX_cd_set_index (
         	  )
 {
 
-  clock ();
+  clock ( false );
 
   _index= data&0x3;
+
+  update_timing_event ();
   
 } // end PSX_cd_set_index
 
@@ -3178,7 +3186,7 @@ PSX_cd_status (void)
   uint8_t ret;
 
   
-  clock ();
+  clock ( true );
   
   ret=
     _index |
@@ -3207,7 +3215,7 @@ PSX_cd_port1_write (
         	    )
 {
 
-  clock ();
+  clock ( false );
   
   switch ( _index )
     {
@@ -3218,7 +3226,7 @@ PSX_cd_port1_write (
         	     "CD Port1.0 (W): s'ha intentat executar un comandament"
         	     " en la fase 'busy', per tant %02X s'ignorarà",
         	     data );
-          return;
+          goto update;
         }
       if ( _cmd.pendent )
         {
@@ -3227,7 +3235,7 @@ PSX_cd_port1_write (
         	     " quan ja hi ha un altre pendent per executar, per tant"
         	     " $02X s'ignorarà",
         	     data );
-          return;
+          goto update;
         }
       _cmd.pendent= true;
       _cmd.cmd= data;
@@ -3254,7 +3262,6 @@ PSX_cd_port1_write (
       _timing.cc2first_response= 10500 + rand()%3000 + 1815;
       _timing.cc2first_response+= _fifop.N * 1815;
       _timing.cc2first_response+= 8500;
-      update_timing_event ();
       break;
     case 1: // Sound Map Data Out (W)
       printf("CD PORT1.1 W\n");
@@ -3267,6 +3274,9 @@ PSX_cd_port1_write (
       break;
     default: break;
     }
+
+ update:
+  update_timing_event ();
   
 } // end PSX_cd_port1_write
 
@@ -3277,7 +3287,7 @@ PSX_cd_port2_write (
         	    )
 {
 
-  clock ();
+  clock ( false );
   
   switch ( _index )
     {
@@ -3286,7 +3296,7 @@ PSX_cd_port2_write (
         {
           _warning ( _udata,
         	     "CD Port2.0 (W): la FIFO per a paràmetres està plena" );
-          return;
+          goto update;
         }
       // Si aquest assert falla caldrà emular el ficar paràmetres en
       // fase busy.
@@ -3304,7 +3314,8 @@ PSX_cd_port2_write (
       break;
     default: break;
     }
-  
+ update:
+  update_timing_event ();
 } // end PSX_cd_port2_write
 
 
@@ -3314,7 +3325,7 @@ PSX_cd_port3_write (
         	    )
 {
 
-  clock ();
+  clock ( false );
   
   switch ( _index )
     {
@@ -3362,6 +3373,7 @@ PSX_cd_port3_write (
       break;
     default: break;
     }
+  update_timing_event ();
   
 } // end PSX_cd_port3_write
 
@@ -3373,11 +3385,12 @@ PSX_cd_port1_read (void)
   uint8_t ret;
 
   
-  clock ();
+  clock ( false );
   
   ret= _fifor.v[_fifor.p];
   _fifor.p= (_fifor.p+1)%FIFO_SIZE;
   if ( --_fifor.N < 0 ) _fifor.N= 0;
+  update_timing_event ();
   
   return ret;
   
@@ -3391,10 +3404,11 @@ PSX_cd_port2_read (void)
   uint8_t ret;
 
   
-  clock ();
+  clock ( false );
 
   ret= _fifod.v[_fifod.p];
   if ( _fifod.N ) { ++_fifod.p; --_fifod.N; }
+  update_timing_event ();
   
   return ret;
   
@@ -3408,7 +3422,7 @@ PSX_cd_port3_read (void)
   uint8_t ret;
 
   
-  clock ();
+  clock ( true );
 
   switch ( _index )
     {
@@ -3437,7 +3451,7 @@ PSX_set_disc (
   CD_Disc *ret;
 
   
-  clock ();
+  clock ( false );
 
   stop_waiting ();
   if ( _disc.info != NULL ) { CD_info_free ( _disc.info ); _disc.info= NULL; }
@@ -3494,18 +3508,17 @@ PSX_cd_dma_read (void)
   uint32_t ret;
   
 
-  clock ();
+  clock ( false );
   
   // Comprovacions.
   if ( _fifod.N == 0 )
     {
       _warning ( _udata,
         	 "CD (DMA3): no hi han dades disponibles" );
-      return 0xFF00FF00;
+      ret= 0xFF00FF00;
     }
-
   // Llig
-  if ( _fifod.N >= 4 )
+  else if ( _fifod.N >= 4 )
     {
       ret=
         ((uint32_t) _fifod.v[_fifod.p]) |
@@ -3528,6 +3541,7 @@ PSX_cd_dma_read (void)
             }
         }
     }
+  update_timing_event ();
   
   return ret;
   

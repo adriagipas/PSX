@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 Adrià Giménez Pastor.
+ * Copyright 2015-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -200,6 +200,9 @@ static int _delayed_ops;
 
 // Bàsicament, per a aconsseguir que el l'excepció provocada en un RFE
 // es produisca en la instrucció al tornar.
+// NOTA!! En realitat ho podria llevar, però ara mateixa és una
+// optimització, ja que sols fa la comprovació de les interrupcions
+// quan ha canviat alguna cosa que pot afectar a les interrupcions.
 static bool _check_int;
 
 // Nou valor del PC.
@@ -1583,19 +1586,22 @@ PSX_cpu_init (
 
 
 void
-PSX_cpu_interruption (
-        	      const int  id,
-        	      const bool active
-        	      )
+PSX_cpu_set_int (
+                 const int  id,
+                 const bool active
+                 )
 {
 
+  // NOTA!! No estic simulant l'estat de les senyals d'entrada, perquè
+  // el seu valor es veu en tot moment reflexat en COP0R13, per tant
+  // seria redundant.
+  
   uint32_t mask;
 
   
   mask= (1<<(10+id))&0x0000FC00;
   if ( active ) COP0R13_CAUSE|= mask;
   else          COP0R13_CAUSE&= ~mask;
-  //check_interruptions ();
   _check_int= true; // <-- IMPORTANT !!! Les interrupcions externes no
         	    // són culpa de les instruccions que al
         	    // executar-se permeten que es produisca una
@@ -1605,7 +1611,7 @@ PSX_cpu_interruption (
         	    // següent instrucció que està pendent
         	    // d'executar-se.
   
-} /* end PSX_cpu_interruption */
+} // end PSX_cpu_set_int
 
 
 void

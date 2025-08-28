@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 Adrià Giménez Pastor.
+ * Copyright 2016-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -258,17 +258,15 @@ static void
 check_interrupts (void)
 {
 
-  bool cb31,nb31,b15,b23;
+  bool nb31,b15,b23;
 
 
-  cb31= (_dicr&0x80000000)!=0;
   b15= (_dicr&0x00008000)!=0;
   b23= (_dicr&0x00800000)!=0;
   nb31= b15 || (b23 && ((_dicr>>16)&(_dicr>>24)&0x7F));
   if ( nb31 ) _dicr|= 0x80000000;
   else        _dicr&= 0x7FFFFFFF;
-  if ( !cb31 && nb31 )
-    PSX_int_interruption ( PSX_INT_DMA );
+  PSX_int_interruption ( PSX_INT_DMA, nb31 );
   
 } /* end check_interrupts */
 

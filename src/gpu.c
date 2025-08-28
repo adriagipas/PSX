@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 Adrià Giménez Pastor.
+ * Copyright 2016-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -89,8 +89,6 @@
 
 #define FB_WIDTH 1024
 #define FB_HEIGHT 512
-
-#define ACK_IRQ (_display.irq_enabled= false)
 
 #define UNLOCK_RENDERER        			\
   if ( _renderer_locked )        		\
@@ -241,7 +239,7 @@ static struct
 {
 
   bool enabled;
-  bool irq_enabled;
+  bool irq1;
   enum
   {
     TM_OFF= 0,
@@ -404,6 +402,16 @@ run_fifo_cmds (void);
 /*********************/
 /* FUNCIONS PRIVADES */
 /*********************/
+
+static void
+ack_irq1 (void)
+{
+  
+  _display.irq1= false;
+  PSX_int_interruption ( PSX_INT_GPU, false );
+  
+} // end ack_irq1
+
 
 // Aquesta funció simplement comprova si es cumpleixen les condicions
 // per a acceptar un sync o no. No fa res més. Tampoc fa comprovacions
@@ -747,7 +755,8 @@ clock (void)
       if ( _timing.cctoVBlankIn <= 0 )
         {
           update= true;
-          PSX_int_interruption ( PSX_INT_VBLANK );
+          PSX_int_interruption ( PSX_INT_VBLANK, true );
+          PSX_int_interruption ( PSX_INT_VBLANK, false ); // Simule puls.
           PSX_timers_vblank_in ();
         }
       if ( _timing.cctoVBlankOut <= 0 )
@@ -1104,7 +1113,7 @@ static void
 reset_cmd (void)
 {
   
-  ACK_IRQ;
+  ack_irq1 ();
   enable_display ( false );
   _display.transfer_mode= TM_OFF;
   _display.x= 0;
@@ -2089,8 +2098,8 @@ run_fifo_cmd (void)
           break;
         case 0x03: break; // Desconegut
         case 0x1F: // Interrupt Request (IRQ1)
-          if ( _display.irq_enabled )
-            PSX_int_interruption ( PSX_INT_GPU );
+          _display.irq1= true;
+          PSX_int_interruption ( PSX_INT_GPU, true );
           break;
         case 0x20: // Monochrome three-point polygon, opaque
         case 0x21:
@@ -4096,7 +4105,7 @@ gp1_cmd (
     {
     case 0x00: reset_cmd (); break;
     case 0x01: reset_cmd_buffer (); break;
-    case 0x02: ACK_IRQ; break;
+    case 0x02: ack_irq1 (); break;
     case 0x03: enable_display ( (cmd&0x1)==0 ); break;
     case 0x04: /* DMA Direction / Data Request. */
       _display.transfer_mode= cmd&0x3;
@@ -4307,7 +4316,7 @@ PSX_gpu_init (
 
   /* Display. */
   _display.enabled= false;
-  _display.irq_enabled= false;
+  _display.irq1= false;
   _display.transfer_mode= TM_OFF;
   _display.x= 0;
   _display.y= 0;
@@ -4464,7 +4473,7 @@ PSX_gpu_stat (void)
     // GP1(03h)
     ((_display.enabled?0x0:0x1)<<23) |
     // GP0(1Fh)/GP1(02h)
-    ((_display.irq_enabled?0x1:00)<<24) |
+    ((_display.irq1?0x1:00)<<24) |
     // GP1(04h)
     (_display.transfer_mode<<29) |
     // Altres bits

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 Adrià Giménez Pastor.
+ * Copyright 2015-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -328,12 +328,12 @@ PSX_cpu_init (
               void        *udata
               );
 
-/* Canvia l'estat d'una interrupció. id ha de ser 0..5. */
+// Canvia l'estat d'una senyal d'interrupció. id ha de ser 0..5.
 void
-PSX_cpu_interruption (
-        	      const int  id,
-        	      const bool active
-        	      );
+PSX_cpu_set_int (
+                 const int  id,
+                 const bool active
+                 );
 
 /* Força l'execució d'una excepció reset en l'intèrpret. */
 void
@@ -640,7 +640,8 @@ PSX_int_set_mode_trace (
 /* Fixa el bit d'interrupció en I-STAT. */
 void
 PSX_int_interruption (
-        	      const PSX_Interruption flag
+        	      const PSX_Interruption flag,
+                      const bool             value
         	      );
 
 /* Llig l'estat de les interrupcions. */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2022 Adrià Giménez Pastor.
+ * Copyright 2018-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -587,24 +587,23 @@ joy_read (
 
 
 static void
-try_irq (void)
+update_irq (void)
 {
 
   static const int rx_mode[]= { 1, 2, 4, 8 };
+
   
-  if ( _status.irq_request ) return; // Ja està servida
-  if ( (_ctrl.ack_int_enabled && _status.ack) ||
-       (_ctrl.tx_int_enabled &&
-        _transfer.activated && // <-- APOSTA
-        (JOY_STAT1_READY || JOY_STAT2_READY)) ||
-       (_ctrl.rx_int_enabled &&
-        rx_mode[_ctrl.rx_int_mode]==_transfer.rx_fifo_N) )
-    {
-      _status.irq_request= true;
-      PSX_int_interruption ( PSX_INT_IRQ7 );
-    }
+  _status.irq_request=
+    ( (_ctrl.ack_int_enabled && _status.ack) ||
+      (_ctrl.tx_int_enabled &&
+       _transfer.activated && // <-- APOSTA
+       (JOY_STAT1_READY || JOY_STAT2_READY)) ||
+      (_ctrl.rx_int_enabled &&
+       rx_mode[_ctrl.rx_int_mode]==_transfer.rx_fifo_N) )
+    ;
+  PSX_int_interruption ( PSX_INT_IRQ7, _status.irq_request );
   
-} // end try_irq
+} // end update_irq
 
 
 static void
@@ -677,11 +676,11 @@ transfer_byte (void)
   _ctrl.rxen= false;
   
   // Comprova interrupcions.
-  try_irq ();
+  update_irq ();
   
 } // end transfer_byte
 
-extern long GLOBAL_CC;
+
 static void
 clock (void)
 {
@@ -702,7 +701,7 @@ clock (void)
           _timing.wait_ack= false;
           _timing.wait_ack_high= true;
           _timing.cc2ack_high= CC2ACK_HIGH;
-          try_irq ();
+          update_irq ();
         }
     }
 
@@ -888,7 +887,7 @@ PSX_joy_rx_data (void)
         (_transfer.rx_fifo>>8) | 0xFF00000000000000;
       --_transfer.rx_fifo_N;
       if ( _ctrl.rx_int_enabled )
-        try_irq (); // Buidar byte pot generar una int lectura
+        update_irq (); // Buidar byte pot generar una int lectura
     }
   
   return ret;
@@ -979,7 +978,6 @@ PSX_joy_ctrl_write (
   if ( data&0x10 ) // ACK
     {
       _status.rx_parity_error= false;
-      _status.irq_request= false;
       _status.ack= false;
       _timing.wait_ack_high= false;
     }
@@ -995,7 +993,7 @@ PSX_joy_ctrl_write (
   // Al canviar el txen es pot activar la transferència.
   try_activate_transfer ();
   // Comprova interrupcions.
-  try_irq ();
+  update_irq ();
   // Actualitza comptadors temps.
   update_timing_event ();
   

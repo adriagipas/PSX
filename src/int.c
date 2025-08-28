@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 Adrià Giménez Pastor.
+ * Copyright 2016-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -36,7 +36,7 @@
 /**********/
 
 #define UPDATE_CPU_INT        					\
-  PSX_cpu_interruption ( 0, (_i_stat&_i_mask)!=0 )
+  PSX_cpu_set_int ( 0, (_i_stat&_i_mask)!=0 )
 
 
 
@@ -45,18 +45,16 @@
 /* ESTAT */
 /*********/
 
-/* Estat i màscara. */
+// Estat, màscara i senyals d'entrada.
 static uint32_t _i_stat;
 static uint32_t _i_mask;
+static uint32_t _in;
 
 // Trace.
 static void *_udata;
 static PSX_IntTrace *_int;
 
-// Clock.
-//static int _last_clock;
-
-static void (*_interruption) (const PSX_Interruption flag);
+static void (*_interruption) (const PSX_Interruption flag, const bool value);
 static void (*_int_ack) (const uint32_t data);
 
 
@@ -67,19 +65,29 @@ static void (*_int_ack) (const uint32_t data);
 
 static void
 interruption (
-              const PSX_Interruption flag
+              const PSX_Interruption flag,
+              const bool             value
               )
 {
-  
-  _i_stat|= flag;
-  UPDATE_CPU_INT;
+
+  if ( value )
+    {
+      if ( (_in&flag) == 0 ) // Edge triggered
+        {
+          _i_stat|= flag;
+          UPDATE_CPU_INT;
+        }
+      _in|= flag;
+    }
+  else _in&= ~flag;
   
 } // end interruption
 
 
 static void
 interruption_trace (
-        	    const PSX_Interruption flag
+        	    const PSX_Interruption flag,
+                    const bool             value
         	    )
 {
 
@@ -88,8 +96,9 @@ interruption_trace (
 
   old_i_stat= _i_stat;
   i_mask= _i_mask;
-  interruption ( flag );
-  _int ( false, old_i_stat, _i_stat, i_mask, _udata );
+  interruption ( flag, value );
+  if ( old_i_stat != _i_stat )
+    _int ( false, old_i_stat, _i_stat, i_mask, _udata );
   
 } // end interruption_trace
 
@@ -121,21 +130,6 @@ int_ack_trace (
   
 } // end int_ack_trace
 
-#if 0
-static void
-clock (void)
-{
-
-  _last_clock= PSX_Clock;
-  PSX_gpu_clock ( false );
-  PSX_cd_clock ( false );
-  PSX_spu_clock ( false );
-  PSX_joy_clock ( false );
-  PSX_timers_clock ( false );
-  
-} // end clock
-#endif
-
 
 
 
@@ -157,25 +151,18 @@ PSX_int_init (
   _int_ack= int_ack;
   
   // Inicialitza.
-  _i_stat= _i_mask= 0;
-  //_last_clock= 0;
+  _i_stat= _i_mask= _in= 0;
   
 } // end PSX_int_init
 
-/*
-void
-PSX_int_end_iter (void)
-{
-  _last_clock= 0;
-} // end PSX_int_end_iter
-*/
 
 void
 PSX_int_interruption (
-        	      const PSX_Interruption flag
+        	      const PSX_Interruption flag,
+                      const bool             value
         	      )
 {
-  _interruption ( flag );
+  _interruption ( flag, value );
 } // end PSX_int_interruption
 
 

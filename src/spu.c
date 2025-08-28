@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2022 Adrià Giménez Pastor.
+ * Copyright 2017-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -434,11 +434,11 @@ adsr_release_init (
 static void
 set_int (void)
 {
-
-  if ( !_int.request && _stat.irq_enabled ) // ???
+  
+  if ( _stat.irq_enabled ) // ???
     {
       _int.request= true;
-      PSX_int_interruption ( PSX_INT_SPU );
+      PSX_int_interruption ( PSX_INT_SPU, true );
     }
   
 } // end set_int
@@ -2252,7 +2252,11 @@ PSX_spu_set_control (
   _noise.step= STEP[(data>>8)&0x3];
   _stat.reverb_master_enabled= (data&0x80)!=0;
   _stat.irq_enabled= _stat.enabled && ((data&0x40)!=0);
-  if ( (data&0x40) == 0 ) _int.request= false;
+  if ( (data&0x40) == 0 )
+    {
+      _int.request= false;
+      PSX_int_interruption ( PSX_INT_SPU, false );
+    }
 
   // NOTA!!! Vaig a assumit que en realitat sí que s'actualitzen ací
   // tots els paràmetres. Simplement, en Status els 5 bits inferiors

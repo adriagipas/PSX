@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 Adrià Giménez Pastor.
+ * Copyright 2016-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -399,7 +399,11 @@ clock_timer (
       if ( timer->irq_toggle_bit )
         timer->irq_requested= !timer->irq_requested;
       else timer->irq_requested= true;
-      if ( timer->irq_requested ) PSX_int_interruption ( IRQ );
+      if ( timer->irq_requested )
+        {
+          PSX_int_interruption ( IRQ, true );
+          PSX_int_interruption ( IRQ, false );
+        }
     }
   
 } // end clock_timer
