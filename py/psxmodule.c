@@ -51,10 +51,11 @@ int MY_GLOBAL_PRINT=0;
         return NULL;                                                    \
       }                                                                 \
   } while(0)
-
-#define SHOW_PC_CC        					\
-  if ( _tracer.dbg_flags&DBG_SHOW_PC_CC )        		\
-    printf ( "CC: %016lX PC: %08X  ", _tracer.cc, _tracer.pc )
+  
+#define SHOW_PC_CC                                                      \
+  if ( _tracer.dbg_flags&DBG_SHOW_PC_CC )                               \
+    printf ( "STP: %016lX CC: %016lX PC: %08X  ",                       \
+             _tracer.steps, _tracer.cc, _tracer.pc )
 
 #define DBG_MEM_CHANGED    0x01
 #define DBG_MEM_ACCESS     0x02
@@ -156,6 +157,7 @@ static struct
   int       dbg_flags;
   uint64_t  cc;
   uint32_t  pc;
+  uint64_t  steps;
 } _tracer;
 
 /* Disc. */
@@ -2043,6 +2045,7 @@ PSX_init_module (
   _tracer.dbg_flags= 0;
   _tracer.pc= 0;
   _tracer.cc= 0;
+  _tracer.steps= 0;
 
   /* Inicialitza el simulador. */
   PSX_init ( _bios, &frontend, NULL, _renderer );
@@ -2062,6 +2065,35 @@ PSX_init_module (
   return NULL;
   
 } /* end PSX_init_module */
+
+
+static PyObject *
+PSX_steps_module (
+                  PyObject *self,
+                  PyObject *args
+                  )
+{
+
+  bool stop;
+  int nsteps,cc;
+  int n;
+
+  
+  CHECK_INITIALIZED;
+  
+  if ( !PyArg_ParseTuple ( args, "i", &nsteps ) )
+    return NULL;
+  
+  for ( n= 0; n < NBUFF; ++n ) _audio.buffers[n].full= 0;
+  SDL_PauseAudio ( 0 );
+  cc= nsteps;
+  while ( cc > 0 )
+    cc-= PSX_iter ( cc, &stop );
+  SDL_PauseAudio ( 1 );
+  
+  Py_RETURN_NONE;
+  
+} // end PSX_steps_module
 
 
 static PyObject *
@@ -2245,6 +2277,7 @@ PSX_trace_module (
     {
       inst_cc= PSX_trace ();
       cc+= inst_cc;
+      ++_tracer.steps;
       _tracer.cc+= (uint64_t) inst_cc;
       _tracer.pc= PSX_cpu_regs.pc;
     }
@@ -2334,6 +2367,48 @@ PSX_config_debug (
 } // end PSX_config_debug
 
 
+static PyObject *
+PSX_press_button (
+                  PyObject *self,
+                  PyObject *args
+                  )
+{
+  
+  int but;
+
+  
+  CHECK_INITIALIZED;
+
+  if ( !PyArg_ParseTuple ( args, "i", &but ) )
+    return NULL;
+  _control.pad1.buttons|= but;
+  
+  Py_RETURN_NONE;
+  
+} // end PSX_press_button
+
+
+static PyObject *
+PSX_release_button (
+                    PyObject *self,
+                    PyObject *args
+                    )
+{
+  
+  int but;
+
+  
+  CHECK_INITIALIZED;
+
+  if ( !PyArg_ParseTuple ( args, "i", &but ) )
+    return NULL;
+  _control.pad1.buttons&= ~but;
+  
+  Py_RETURN_NONE;
+  
+} // end PSX_release_button
+
+
 
 
 /************************/
@@ -2350,6 +2425,8 @@ static PyMethodDef PSXMethods[]=
       "Initialize the module (requires bios as argument)" },
     { "loop", PSX_loop_module, METH_VARARGS,
       "Run the simulator into a loop and block" },
+    { "steps", PSX_steps_module, METH_VARARGS,
+      "Run the simulator the number of specified cycles" },
     { "plug_mem_cards", PSX_plug_mem_cards_, METH_VARARGS,
       "Plugs memory cards" },
     { "set_disc", PSX_set_disc_, METH_VARARGS,
@@ -2365,6 +2442,10 @@ static PyMethodDef PSXMethods[]=
       "Returns the frame buffer" },
     { "config_debug", PSX_config_debug, METH_VARARGS,
       "Enable C debugger" },
+    { "press_button", PSX_press_button, METH_VARARGS,
+      "Press button" },
+    { "release_button", PSX_release_button, METH_VARARGS,
+      "Release button" },
     
     { NULL, NULL, 0, NULL }
   };
@@ -2602,6 +2683,22 @@ PyInit_PSX (void)
   PyModule_AddIntConstant ( m, "DBG_DMA_TRANSFER", DBG_DMA_TRANSFER );
   PyModule_AddIntConstant ( m, "DBG_GTE_MEM_ACCESS", DBG_GTE_MEM_ACCESS );
   PyModule_AddIntConstant ( m, "DBG_GTE_CMD_TRACE", DBG_GTE_CMD_TRACE );
+
+  // Botons
+  PyModule_AddIntConstant ( m, "BUTTON_SELECT", PSX_BUTTON_SELECT );
+  PyModule_AddIntConstant ( m, "BUTTON_START", PSX_BUTTON_START );
+  PyModule_AddIntConstant ( m, "BUTTON_UP", PSX_BUTTON_UP );
+  PyModule_AddIntConstant ( m, "BUTTON_RIGHT", PSX_BUTTON_RIGHT );
+  PyModule_AddIntConstant ( m, "BUTTON_DOWN", PSX_BUTTON_DOWN );
+  PyModule_AddIntConstant ( m, "BUTTON_LEFT", PSX_BUTTON_LEFT );
+  PyModule_AddIntConstant ( m, "BUTTON_L2", PSX_BUTTON_L2 );
+  PyModule_AddIntConstant ( m, "BUTTON_R2", PSX_BUTTON_R2 );
+  PyModule_AddIntConstant ( m, "BUTTON_L1", PSX_BUTTON_L1 );
+  PyModule_AddIntConstant ( m, "BUTTON_R1", PSX_BUTTON_R1 );
+  PyModule_AddIntConstant ( m, "BUTTON_TRIANGLE", PSX_BUTTON_TRIANGLE );
+  PyModule_AddIntConstant ( m, "BUTTON_CIRCLE", PSX_BUTTON_CIRCLE );
+  PyModule_AddIntConstant ( m, "BUTTON_CROSS", PSX_BUTTON_CROSS );
+  PyModule_AddIntConstant ( m, "BUTTON_SQUARE", PSX_BUTTON_SQUARE );
   
   return m;
 
