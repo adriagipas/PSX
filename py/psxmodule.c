@@ -2385,16 +2385,55 @@ PSX_print_regs (
            PSX_cpu_regs.pc, PSX_cpu_regs.hi, PSX_cpu_regs.lo );
 
   // Registres generals
-  for ( i= 0; i < 8; ++i )
-    {
-      SHOW_PC_CC;
-      printf ( "[CPU] GPR%02d:%08X GPR%02d:%08X GPR%02d:%08X GPR%02d:%08X\n",
-               4*i, PSX_cpu_regs.gpr[4*i].v,
-               4*i+1, PSX_cpu_regs.gpr[4*i+1].v,
-               4*i+2, PSX_cpu_regs.gpr[4*i+2].v,
-               4*i+3, PSX_cpu_regs.gpr[4*i+3].v );
-    }
-
+  SHOW_PC_CC;
+  printf ( "[CPU] ZERO:%08X AT:%08X V0:%08X V1:%08X\n",
+           PSX_cpu_regs.gpr[0].v,
+           PSX_cpu_regs.gpr[1].v,
+           PSX_cpu_regs.gpr[2].v,
+           PSX_cpu_regs.gpr[3].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] A0:%08X   A1:%08X A2:%08X A3:%08X\n",
+           PSX_cpu_regs.gpr[4].v,
+           PSX_cpu_regs.gpr[5].v,
+           PSX_cpu_regs.gpr[6].v,
+           PSX_cpu_regs.gpr[7].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] T0:%08X   T1:%08X T2:%08X T3:%08X\n",
+           PSX_cpu_regs.gpr[8].v,
+           PSX_cpu_regs.gpr[9].v,
+           PSX_cpu_regs.gpr[10].v,
+           PSX_cpu_regs.gpr[11].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] T4:%08X   T5:%08X T6:%08X T7:%08X\n",
+           PSX_cpu_regs.gpr[12].v,
+           PSX_cpu_regs.gpr[13].v,
+           PSX_cpu_regs.gpr[14].v,
+           PSX_cpu_regs.gpr[15].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] S0:%08X   S1:%08X S2:%08X S3:%08X\n",
+           PSX_cpu_regs.gpr[16].v,
+           PSX_cpu_regs.gpr[17].v,
+           PSX_cpu_regs.gpr[18].v,
+           PSX_cpu_regs.gpr[19].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] S4:%08X   S5:%08X S6:%08X S7:%08X\n",
+           PSX_cpu_regs.gpr[20].v,
+           PSX_cpu_regs.gpr[21].v,
+           PSX_cpu_regs.gpr[22].v,
+           PSX_cpu_regs.gpr[23].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] T8:%08X   T9:%08X K0:%08X K1:%08X\n",
+           PSX_cpu_regs.gpr[24].v,
+           PSX_cpu_regs.gpr[25].v,
+           PSX_cpu_regs.gpr[26].v,
+           PSX_cpu_regs.gpr[27].v );
+  SHOW_PC_CC;
+  printf ( "[CPU] GP:%08X   SP:%08X FP:%08X RA:%08X\n",
+           PSX_cpu_regs.gpr[28].v,
+           PSX_cpu_regs.gpr[29].v,
+           PSX_cpu_regs.gpr[30].v,
+           PSX_cpu_regs.gpr[31].v );
+  
   // Registres COP0
   SHOW_PC_CC;
   printf( "[CPU] BPC:%08X  BDA:%08X  DCIC:%08X BAD_VADDR:%08X\n",
