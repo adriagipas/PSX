@@ -894,6 +894,7 @@ dbg_cd_cmd_trace (
     case PSX_CD_FORWARD: name= "Forward"; break;
     case PSX_CD_BACKWARD: name= "Backward"; break;
     case PSX_CD_SET_FILTER: name= "Setfilter"; break;
+    default:
     case PSX_CD_UNK: name= "Unknown"; break;
     }
   printf ( "[CD] %02x  %s", cmd->cmd, name );
@@ -2374,9 +2375,6 @@ PSX_print_regs (
                 )
 {
 
-  int i;
-  
-  
   CHECK_INITIALIZED;
   
   // Registres especials.

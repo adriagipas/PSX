@@ -390,7 +390,7 @@ static struct
   int      p2;
   int      N2;
   sector_t v2[NBUFS];
-
+  
   // Altres
   uint8_t  subq[CD_SUBCH_SIZE];
   uint8_t  last_header[HEADERSIZE];
@@ -1589,15 +1589,133 @@ get_new_sector (void)
 } // end get_new_sector
 
 
+// Força que un sector del buffer de nivell 1 passe al buffer de nivell 2.
+static read_next_sector_status_t
+process_sector (void)
+{
+
+  read_next_sector_status_t ret;
+  int off;
+  uint8_t mode;
+  sector_t *sec;
+  raw_sector_t *tmp;
+  
+  assert ( _bread.N1 > 0 );
+
+  // Obté sector de primer nivell.
+  tmp= &(_bread.v1[_bread.p1]);
+  _bread.p1^= 1;
+  --_bread.N1;
+  
+  // Processa.
+  ret= READ_NEXT_SECTOR_OK;
+  if ( _cmd.mode.enable_read_cdda_sectors )
+    {
+      if ( !tmp->audio ) ret= READ_NEXT_SECTOR_ERROR;
+      else
+        {
+          sec= get_new_sector ();
+          memcpy ( sec->data, tmp->v, 0x930 );
+          sec->nbytes= 0x930;
+          ret= READ_NEXT_SECTOR_OK_INT;
+        }
+    }
+  else if ( tmp->audio ) ret= READ_NEXT_SECTOR_ERROR;
+  else
+    {
+      memcpy ( _bread.last_header, &(tmp->v[0xC]), HEADERSIZE );
+      _bread.last_header_ok= true;
+      _cmd.stat&= ~(STAT_READ|STAT_SEEK|STAT_PLAY);
+      _cmd.stat|= STAT_READ;
+      
+      if ( _bread.last_header[3]==0x02 && // Mode CD-XA
+           _cmd.mode.xa_adpcm_enabled &&
+           // Vaig assumir que seria &0x04 (bit audio) pero mednaden
+           // sols ignora si 0x64 (audio, RT i form2) estan activats.
+           ((tmp->v[0x12]&0x64)==0x64) ) // Audio, rt i form2
+        {
+          // Els sectors CD-XA no es desen en el buffer.
+          // Però no tots es processen per el ADPCM, cal veure si
+          // estem filtrant i de fer-ho si encaixa.
+          if ( !_cmd.mode.use_xa_filter ||
+               (_cmd.filter.file == tmp->v[0x10] &&
+                _cmd.filter.channel == tmp->v[0x11]) )
+            {
+              // En mode CD-XA s'ignora el sector_size_924h
+              decode_adpcm_sector ( tmp->v[0x13], // codinginfo
+                                    &(tmp->v[0x18]), // data
+                                    &_audio.adpcm.old_l,
+                                    &_audio.adpcm.older_l,
+                                    &_audio.adpcm.old_r,
+                                    &_audio.adpcm.older_r );
+            }
+        }
+      else if ( _cmd.mode.sector_size_924h )
+        {
+          sec= get_new_sector ();
+          memcpy ( sec->data, &(tmp->v[0xC]), 0x924 );
+          sec->nbytes= 0x924;
+          ret= READ_NEXT_SECTOR_OK_INT;
+        }
+      else
+        {
+          sec= get_new_sector ();
+          mode= tmp->v[0xC+3];
+          off= mode==0x01 ? 0x10 : 0x18;
+          memcpy ( sec->data, &(tmp->v[off]), 0x800 );
+          sec->nbytes= 0x800;
+          ret= READ_NEXT_SECTOR_OK_INT;
+        }
+    }
+
+  return ret;
+  
+} // end process_sector
+
+
+// NOTA!!! Açò ho faig perquè funcione PE. Bàsicament, el que ocorre
+// és que abans de que aplegue un altre IRQ del CD el joc demana
+// plenar el Data Fifo. En realitat sí que tinc llegits sectors per si
+// de cas abans, però tinc molts dubtes que aquest siga el
+// comportament esperat. Probablement el que està passant és que el
+// timing no és correcte o que hi ha algun error de la CPU i està
+// executant la rutina d'interrupció del CD quan no és el que tocava.
+// La prova de què alguna cosa no està bé, és el fet que es plene el
+// Data Fifo sense generar cap interrupció.
+static bool
+try_fill_buffer_l2 (void)
+{
+
+  read_next_sector_status_t ret;
+
+  
+  while ( _bread.N1 > 0 )
+    {
+      ret= process_sector ();
+      if ( ret == READ_NEXT_SECTOR_ERROR )
+        {
+          _warning ( _udata,
+                     "CD (TryFillBufferL2): s'ha produit un error que"
+                     " s'ignorarà sense llegnerar una excepció" );
+          return false;
+        }
+      else if ( ret == READ_NEXT_SECTOR_OK_INT )
+        return true;
+      // si és OK continue buscant, perquè en eixe cas no es carrega sector.
+    }
+  
+  return false;
+
+  
+} // end try_fill_buffer_l2
+
+
 static read_next_sector_status_t
 read_next_sector (void)
 {
 
   read_next_sector_status_t ret;
   bool crc_ok;
-  int off;
-  uint8_t mode;
-  sector_t *sec;
   raw_sector_t *tmp;
   uint8_t tmp_subq[CD_SUBCH_SIZE];
   
@@ -1609,73 +1727,7 @@ read_next_sector (void)
   
   // Fes espai si és necessari.
   if ( _bread.N1 == 2 )
-    {
-
-      // Obté sector de primer nivell.
-      tmp= &(_bread.v1[_bread.p1]);
-      _bread.p1^= 1;
-      --_bread.N1;
-      
-      // Processa.
-      if ( _cmd.mode.enable_read_cdda_sectors )
-        {
-          if ( !tmp->audio ) ret= READ_NEXT_SECTOR_ERROR;
-          else
-            {
-              sec= get_new_sector ();
-              memcpy ( sec->data, tmp->v, 0x930 );
-              sec->nbytes= 0x930;
-              ret= READ_NEXT_SECTOR_OK_INT;
-            }
-        }
-      else if ( tmp->audio ) ret= READ_NEXT_SECTOR_ERROR;
-      else
-        {
-          memcpy ( _bread.last_header, &(tmp->v[0xC]), HEADERSIZE );
-          _bread.last_header_ok= true;
-          _cmd.stat&= ~(STAT_READ|STAT_SEEK|STAT_PLAY);
-          _cmd.stat|= STAT_READ;
-          
-          if ( _bread.last_header[3]==0x02 && // Mode CD-XA
-               _cmd.mode.xa_adpcm_enabled &&
-               // Vaig assumir que seria &0x04 (bit audio) pero mednaden
-               // sols ignora si 0x64 (audio, RT i form2) estan activats.
-               ((tmp->v[0x12]&0x64)==0x64) ) // Audio, rt i form2
-            {
-              // Els sectors CD-XA no es desen en el buffer.
-              // Però no tots es processen per el ADPCM, cal veure si
-              // estem filtrant i de fer-ho si encaixa.
-              if ( !_cmd.mode.use_xa_filter ||
-                   (_cmd.filter.file == tmp->v[0x10] &&
-                    _cmd.filter.channel == tmp->v[0x11]) )
-                {
-                  // En mode CD-XA s'ignora el sector_size_924h
-                  decode_adpcm_sector ( tmp->v[0x13], // codinginfo
-                                        &(tmp->v[0x18]), // data
-                                        &_audio.adpcm.old_l,
-                                        &_audio.adpcm.older_l,
-                                        &_audio.adpcm.old_r,
-                                        &_audio.adpcm.older_r );
-                }
-            }
-          else if ( _cmd.mode.sector_size_924h )
-            {
-              sec= get_new_sector ();
-              memcpy ( sec->data, &(tmp->v[0xC]), 0x924 );
-              sec->nbytes= 0x924;
-              ret= READ_NEXT_SECTOR_OK_INT;
-            }
-          else
-            {
-              sec= get_new_sector ();
-              mode= tmp->v[0xC+3];
-              off= mode==0x01 ? 0x10 : 0x18;
-              memcpy ( sec->data, &(tmp->v[off]), 0x800 );
-              sec->nbytes= 0x800;
-              ret= READ_NEXT_SECTOR_OK_INT;
-            }
-        }
-    }
+    ret= process_sector ();
   
   // Llig següent sector
   tmp= &(_bread.v1[(_bread.p1+_bread.N1)&1]); // sols 2 buffers
@@ -1687,7 +1739,7 @@ read_next_sector (void)
       ++_bread.counter;
     }
   else ret= READ_NEXT_SECTOR_ERROR;
-
+  
   return ret;
   
 } // end read_next_sector
@@ -3006,8 +3058,9 @@ fifod_load (void)
 
 
   if ( _fifod.N > 0 ) return; // Sols carrega si no hi han dades pendents
-  if ( _bread.N2 == 0 )
+  if ( _bread.N2 == 0 && !try_fill_buffer_l2 () ) 
     {
+      // REVISAR TryFillBufferL2
       _warning ( _udata,
                  "CD (LoadDataFIFO): no hi han sectors carregats en memòria" );
       return;
@@ -3675,7 +3728,7 @@ PSX_cd_reset (void)
   _request.smen= false;
   _request.bfwr= false;
   _request.bfrd= false;
-
+  
   // Buffer lectura.
   _bread.p1= _bread.N1= 0;
   _bread.p2= _bread.N2= 0;
