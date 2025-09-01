@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2022 Adrià Giménez Pastor.
+ * Copyright 2017-2025 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -2368,6 +2368,56 @@ PSX_config_debug (
 
 
 static PyObject *
+PSX_print_regs (
+                PyObject *self,
+                PyObject *args
+                )
+{
+
+  int i;
+  
+  
+  CHECK_INITIALIZED;
+  
+  // Registres especials.
+  SHOW_PC_CC;
+  printf ( "[CPU] PC:%08X HI:%08X LO:%08X\n",
+           PSX_cpu_regs.pc, PSX_cpu_regs.hi, PSX_cpu_regs.lo );
+
+  // Registres generals
+  for ( i= 0; i < 8; ++i )
+    {
+      SHOW_PC_CC;
+      printf ( "[CPU] GPR%02d:%08X GPR%02d:%08X GPR%02d:%08X GPR%02d:%08X\n",
+               4*i, PSX_cpu_regs.gpr[4*i].v,
+               4*i+1, PSX_cpu_regs.gpr[4*i+1].v,
+               4*i+2, PSX_cpu_regs.gpr[4*i+2].v,
+               4*i+3, PSX_cpu_regs.gpr[4*i+3].v );
+    }
+
+  // Registres COP0
+  SHOW_PC_CC;
+  printf( "[CPU] BPC:%08X  BDA:%08X  DCIC:%08X BAD_VADDR:%08X\n",
+          PSX_cpu_regs.cop0r3_bpc,
+          PSX_cpu_regs.cop0r5_bda,
+          PSX_cpu_regs.cop0r7_dcic,
+          PSX_cpu_regs.cop0r8_bad_vaddr );
+  SHOW_PC_CC;
+  printf( "[CPU] BDAM:%08X BPCM:%08X SR:%08X   CAUSE:%08X\n",
+          PSX_cpu_regs.cop0r9_bdam,
+          PSX_cpu_regs.cop0r11_bpcm,
+          PSX_cpu_regs.cop0r12_sr,
+          PSX_cpu_regs.cop0r13_cause );
+  SHOW_PC_CC;
+  printf( "[CPU] EPC:%08X\n",
+          PSX_cpu_regs.cop0r14_epc );
+  
+  Py_RETURN_NONE;
+  
+} // end PSX_print_regs
+
+
+static PyObject *
 PSX_press_button (
                   PyObject *self,
                   PyObject *args
@@ -2442,6 +2492,8 @@ static PyMethodDef PSXMethods[]=
       "Returns the frame buffer" },
     { "config_debug", PSX_config_debug, METH_VARARGS,
       "Enable C debugger" },
+    { "print_regs", PSX_print_regs, METH_NOARGS,
+      "Print CPU registers" },
     { "press_button", PSX_press_button, METH_VARARGS,
       "Press button" },
     { "release_button", PSX_release_button, METH_VARARGS,
