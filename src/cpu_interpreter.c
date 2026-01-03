@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2025 Adrià Giménez Pastor.
+ * Copyright 2015-2026 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -1553,6 +1553,17 @@ PSX_cpu_next_inst (void)
   return ret;
   
 } /* end PSX_cpu_next_inst */
+
+
+bool
+PSX_cpu_test_next_inst (void)
+{
+  return
+    !(_check_int &&
+      (COP0R12_SR&COP0_SR_IEC) &&
+      (COP0R12_SR&COP0R13_CAUSE&0x0000FF00))
+    ;
+} // end PSX_cpu_next_step_is_inst
 
 
 void

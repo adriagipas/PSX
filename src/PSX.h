@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2025 Adrià Giménez Pastor.
+ * Copyright 2015-2026 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -318,6 +318,13 @@ PSX_cpu_decode (
  */
 int
 PSX_cpu_next_inst (void);
+
+// Aquesta funció comprova si el següent pas és executar la instrucció
+// a la que apunta el comptador de programa. NOTA!! No comprova res
+// del buffer, perquè és una instrucció de la CPU. Es centra en veure
+// si va a executar una interrupció o no.
+bool
+PSX_cpu_test_next_inst (void);
 
 /* Inícia l'estat de l'intèrpret. Aquest mètode crida a
  * 'PSX_cpu_init_regs' i a 'PSX_cpu_reset'.

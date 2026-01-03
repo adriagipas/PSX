@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 Adrià Giménez Pastor.
+ * Copyright 2015-2026 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -558,11 +558,12 @@ PSX_cpu_decode (
 {
 
   PSX_Word word;
+
   
-  
+  if ( !PSX_cpu_test_next_inst () ) return false;
   if ( !mem_read ( addr, &word.v ) ) return false;
   decode ( word, inst, addr );
   
   return true;
   
-} /* end PSX_cpu_decode */
+} // end PSX_cpu_decode
