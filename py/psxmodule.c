@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2025 Adrià Giménez Pastor.
+ * Copyright 2017-2026 Adrià Giménez Pastor.
  *
  * This file is part of adriagipas/PSX.
  *
@@ -57,18 +57,19 @@ int MY_GLOBAL_PRINT=0;
     printf ( "STP: %016lX CC: %016lX PC: %08X  ",                       \
              _tracer.steps, _tracer.cc, _tracer.pc )
 
-#define DBG_MEM_CHANGED    0x01
-#define DBG_MEM_ACCESS     0x02
-#define DBG_MEM_ACCESS16   0x04
-#define DBG_MEM_ACCESS8    0x08
-#define DBG_CPU_INST       0x10
-#define DBG_GPU_CMD_TRACE  0x20
-#define DBG_CD_CMD_TRACE   0x40
-#define DBG_INT_TRACE      0x80
-#define DBG_SHOW_PC_CC     0x100
-#define DBG_DMA_TRANSFER   0x200
-#define DBG_GTE_MEM_ACCESS 0x400
-#define DBG_GTE_CMD_TRACE  0x800
+#define DBG_MEM_CHANGED     0x01
+#define DBG_MEM_ACCESS      0x02
+#define DBG_MEM_ACCESS16    0x04
+#define DBG_MEM_ACCESS8     0x08
+#define DBG_CPU_INST        0x10
+#define DBG_GPU_CMD_TRACE   0x20
+#define DBG_CD_CMD_TRACE    0x40
+#define DBG_INT_TRACE       0x80
+#define DBG_SHOW_PC_CC      0x100
+#define DBG_DMA_TRANSFER    0x200
+#define DBG_GTE_MEM_ACCESS  0x400
+#define DBG_GTE_CMD_TRACE   0x800
+#define DBG_BIOS_FUNC_TRACE 0x1000
 
 #define MEMCARD_SIZE (128*1024)
 
@@ -1157,6 +1158,543 @@ dbg_gte_mem_access (
 } // end dbg_gte_mem_access
 
 
+static void
+dbg_bios_func_trace_00A0 (void)
+{
+  
+  // Basat en la documentació de NOCASH
+  bool show_args;
+
+
+  show_args= true;
+  SHOW_PC_CC;
+  printf ( "[BIOS] " );
+  switch ( PSX_cpu_regs.gpr[9].v )
+    {
+    case 0x00: printf ( "FileOpen(filename,accessmode)" ); break;
+    case 0x01: printf ( "FileSeek(fd,offset,seektype)" ); break;
+    case 0x02: printf ( "FileRead(fd,dst,length)" ); break;
+    case 0x03: printf ( "FileWrite(fd,src,length)" ); break;
+    case 0x04: printf ( "FileClose(fd)" ); break;
+    case 0x05: printf ( "FileIoctl(fd,cmd,arg)" ); break;
+    case 0x06: printf ( "exit(exitcode)" ); break;
+    case 0x07: printf ( "FileGetDeviceFlag(fd)" ); break;
+    case 0x08: printf ( "FileGetc(fd)" ); break;
+    case 0x09: printf ( "FilePutc(char,fd)" ); break;
+    case 0x0A: printf ( "todigit(char)" ); break;
+    case 0x0B:
+      printf ( "atof(src)     ;Does NOT work - uses (ABSENT) cop1 !!!" );
+      break;
+    case 0x0C: printf ( "strtoul(src,src_end,base)" ); break;
+    case 0x0D: printf ( "strtol(src,src_end,base)" ); break;
+    case 0x0E: printf ( "abs(val)" ); break;
+    case 0x0F: printf ( "labs(val)" ); break;
+    case 0x10: printf ( "atoi(src)" ); break;
+    case 0x11: printf ( "atol(src)" ); break;
+    case 0x12: printf ( "atob(src,num_dst)" ); break;
+    case 0x13: printf ( "SaveState(buf)" ); break;
+    case 0x14: printf ( "RestoreState(buf,param)" ); break;
+    case 0x15: printf ( "strcat(dst,src)" ); break;
+    case 0x16: printf ( "strncat(dst,src,maxlen)" ); break;
+    case 0x17: printf ( "strcmp(str1,str2)" ); break;
+    case 0x18: printf ( "strncmp(str1,str2,maxlen)" ); break;
+    case 0x19: printf ( "strcpy(dst,src)" ); break;
+    case 0x1A: printf ( "strncpy(dst,src,maxlen)" ); break;
+    case 0x1B: printf ( "strlen(src)" ); break;
+    case 0x1C: printf ( "index(src,char)" ); break;
+    case 0x1D: printf ( "rindex(src,char)" ); break;
+    case 0x1E:
+      printf ( "strchr(src,char)  ;exactly the same as 'index'" );
+      break;
+    case 0x1F:
+      printf ( "strrchr(src,char) ;exactly the same as 'rindex'" );
+      break;
+    case 0x20: printf ( "strpbrk(src,list)" ); break;
+    case 0x21: printf ( "strspn(src,list)" ); break;
+    case 0x22: printf ( "strcspn(src,list)" ); break;
+    case 0x23:
+      printf ( "strtok(src,list)  ;use strtok(0,list) in further calls" );
+      break;
+    case 0x24: printf ( "strstr(str,substr) - buggy" ); break;
+    case 0x25: printf ( "toupper(char)" ); break;
+    case 0x26: printf ( "tolower(char)" ); break;
+    case 0x27: printf ( "bcopy(src,dst,len)" ); break;
+    case 0x28: printf ( "bzero(dst,len)" ); break;
+    case 0x29: printf ( "bcmp(ptr1,ptr2,len)      ;Bugged" ); break;
+    case 0x2A: printf ( "memcpy(dst,src,len)" ); break;
+    case 0x2B: printf ( "memset(dst,fillbyte,len)" ); break;
+    case 0x2C: printf ( "memmove(dst,src,len)     ;Bugged" ); break;
+    case 0x2D: printf ( "memcmp(src1,src2,len)    ;Bugged" ); break;
+    case 0x2E: printf ( "memchr(src,scanbyte,len)" ); break;
+    case 0x2F: printf ( "rand()" ); break;
+    case 0x30: printf ( "srand(seed)" ); break;
+    case 0x31: printf ( "qsort(base,nel,width,callback)" ); break;
+    case 0x32:
+      printf ( "strtod(src,src_end) ;Does NOT work - uses (ABSENT) cop1 !!!" );
+      break;
+    case 0x33: printf ( "malloc(size)" ); break;
+    case 0x34: printf ( "free(buf)" ); break;
+    case 0x35: printf ( "lsearch(key,base,nel,width,callback)" ); break;
+    case 0x36: printf ( "bsearch(key,base,nel,width,callback)" ); break;
+    case 0x37: printf ( "calloc(sizx,sizy)            ;SLOW!" ); break;
+    case 0x38: printf ( "realloc(old_buf,new_siz)     ;SLOW!" ); break;
+    case 0x39: printf ( "InitHeap(addr,size)" ); break;
+    case 0x3A: printf ( "SystemErrorExit(exitcode)" ); break;
+    case 0x3B: printf ( "or B(3Ch) std_in_getchar()" ); break;
+    case 0x3C: printf ( "or B(3Dh) std_out_putchar(char)" ); break;
+    case 0x3D: printf ( "or B(3Eh) std_in_gets(dst)" ); break;
+    case 0x3E: printf ( "or B(3Fh) std_out_puts(src)" ); break;
+    case 0x3F: printf ( "printf(txt,param1,param2,etc.)" ); break;
+    case 0x40: printf ( "SystemErrorUnresolvedException()" ); break;
+    case 0x41: printf ( "LoadExeHeader(filename,headerbuf)" ); break;
+    case 0x42: printf ( "LoadExeFile(filename,headerbuf)" ); break;
+    case 0x43: printf ( "DoExecute(headerbuf,param1,param2)" ); break;
+    case 0x44: printf ( "FlushCache()" ); break;
+    case 0x45: printf ( "init_a0_b0_c0_vectors" ); break;
+    case 0x46: printf ( "GPU_dw(Xdst,Ydst,Xsiz,Ysiz,src)" ); break;
+    case 0x47: printf ( "gpu_send_dma(Xdst,Ydst,Xsiz,Ysiz,src)" ); break;
+    case 0x48: printf ( "SendGP1Command(gp1cmd)" ); break;
+    case 0x49:
+      printf ( "GPU_cw(gp0cmd=%Xh)   ;send GP0 command word",
+               PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x4A:
+      printf ( "GPU_cwp(src,num) ;send GP0 command word and parameter words" );
+      break;
+    case 0x4B: printf ( "send_gpu_linked_list(src)" ); break;
+    case 0x4C: printf ( "gpu_abort_dma()" ); break;
+    case 0x4D: printf ( "GetGPUStatus()" ); break;
+    case 0x4E: printf ( "gpu_sync()" ); break;
+    case 0x4F: printf ( "SystemError" ); break;
+    case 0x50: printf ( "SystemError" ); break;
+    case 0x51:
+      printf ( "LoadAndExecute(filename,stackbase,stackoffset)" );
+      break;
+    case 0x52: printf ( "SystemError ----OR---- 'GetSysSp()' ?" ); break;
+    case 0x53:
+      printf ( "SystemError            ;PS2: set_ioabort_handler(src)" );
+      break;
+    case 0x54: printf ( "CdInit()" ); break;
+    case 0x55:
+      printf ( "_bu_init()" );
+      break;
+    case 0x56: printf ( "CdRemove()" ); break;
+    case 0x57: printf ( "return 0" ); break;
+    case 0x58: printf ( "return 0" ); break;
+    case 0x59: printf ( "return 0" ); break;
+    case 0x5A: printf ( "return 0" ); break;
+    case 0x5B:
+      printf ( "dev_tty_init()" );
+      break;
+    case 0x5C:
+      printf ( "dev_tty_open(fcb,and unused:'path\\name',accessmode)" );
+      break;
+    case 0x5D: printf ( "dev_tty_in_out(fcb,cmd); PS2: SystemError" ); break;
+    case 0x5E: printf ( "dev_tty_ioctl(fcb,cmd,arg); PS2: SystemError" ); break;
+    case 0x5F: printf ( "dev_cd_open(fcb,'path\\name',accessmode)" ); break;
+    case 0x60: printf ( "dev_cd_read(fcb,dst,len)" ); break;
+    case 0x61: printf ( "dev_cd_close(fcb)" ); break;
+    case 0x62: printf ( "dev_cd_firstfile(fcb,'path\\name',direntry)" ); break;
+    case 0x63: printf ( "dev_cd_nextfile(fcb,direntry)" ); break;
+    case 0x64: printf ( "dev_cd_chdir(fcb,'path')" ); break;
+    case 0x65: printf ( "dev_card_open(fcb,'path\name',accessmode)" ); break;
+    case 0x66: printf ( "dev_card_read(fcb,dst,len)" ); break;
+    case 0x67: printf ( "dev_card_write(fcb,src,len)" ); break;
+    case 0x68: printf ( "dev_card_close(fcb)" ); break;
+    case 0x69:
+      printf ( "dev_card_firstfile(fcb,'path\\name',direntry)" );
+      break;
+    case 0x6A: printf ( "dev_card_nextfile(fcb,direntry)" ); break;
+    case 0x6B: printf ( "dev_card_erase(fcb,'path\\name')" ); break;
+    case 0x6C: printf ( "dev_card_undelete(fcb,'path\\name)'" ); break;
+    case 0x6D: printf ( "dev_card_format(fcb)" ); break;
+    case 0x6E:
+      printf ( "dev_card_rename(fcb1,'path\\name1',fcb2,'path\\name2')" );
+      break;
+  case 0x6F:
+    printf ( "dev_card_clear_error_or_so(fcb);[r4+18h]=00000000h" );
+    break;
+    case 0x70: printf ( "_bu_init()" ); break;
+    case 0x71: printf ( "CdInit()" ); break;
+    case 0x72: printf ( "CdRemove()" ); break;
+    case 0x73: printf ( "return 0" ); break;
+    case 0x74: printf ( "return 0" ); break;
+    case 0x75: printf ( "return 0" ); break;
+    case 0x76: printf ( "return 0" ); break;
+    case 0x77: printf ( "return 0" ); break;
+    case 0x78: printf ( "CdAsyncSeekL(src)" ); break;
+    case 0x79:
+      printf ( "return 0 ;DTL-H2000: CdAsyncSeekP(src)" );
+      break;
+    case 0x7A:
+      printf ( "return 0 ;DTL-H2000: CdAsyncGetlocL(dst?)" );
+      break;
+    case 0x7B:
+      printf ( "return 0 ;DTL-H2000: CdAsyncGetlocP(dst?)" );
+      break;
+    case 0x7C: printf ( "CdAsyncGetStatus(dst)" ); break;
+    case 0x7D:
+      printf ( "return 0 ;DTL-H2000: CdAsyncGetParam(dst?)" );
+      break;
+    case 0x7E: printf ( "CdAsyncReadSector(count,dst,mode)" ); break;
+    case 0x7F:
+      printf ( "return 0 ;DTL-H2000: CdAsyncReadWithNewMode(mode)" );
+      break;
+    case 0x80:
+      printf ( "return 0 ;DTL-H2000: CdAsyncReadFinalCount1(r4)" );
+      break;
+    case 0x81: printf ( "CdAsyncSetMode(mode)" ); break;
+    case 0x82:
+      printf ( "return 0              ;DTL-H2000: CdAsyncMotorOn()" );
+      break;
+    case 0x83:
+      printf ( "return 0              ;DTL-H2000: CdAsyncPause()" );
+      break;
+    case 0x84: printf ( "return 0 ;DTL-H2000: CdAsyncPlayOrReadS()" ); break;
+    case 0x85: printf ( "return 0 ;DTL-H2000: CdAsyncStop()" ); break;
+    case 0x86: printf ( "return 0 ;DTL-H2000: CdAsyncMute()" ); break;
+    case 0x87: printf ( "return 0 ;DTL-H2000: CdAsyncDemute()" ); break;
+    case 0x88:
+      printf ( "return 0 ;DTL-H2000: CdSetAudioVolume(src)  ;4-byte src" );
+      break;
+    case 0x89: printf ( "return 0 ;DTL-H2000: CdAsyncSetSession1(dst)" ); break;
+    case 0x8A:
+      printf ( "return 0 ;DTL-H2000: CdAsyncSetSession(session,dst)" );
+      break;
+    case 0x8B: printf ( "return 0 ;DTL-H2000: CdAsyncForward()" ); break;
+    case 0x8C: printf ( "return 0 ;DTL-H2000: CdAsyncBackward()" ); break;
+    case 0x8D: printf ( "return 0 ;DTL-H2000: CdAsyncPlay()" ); break;
+    case 0x8E:
+      printf ( "return 0 ;DTL-H2000: CdAsyncGetStatSpecial(r4,r5)" );
+      break;
+    case 0x8F: printf ( "return 0 ;DTL-H2000: CdAsyncGetID(r4,r5)" ); break;
+    case 0x90: printf ( "CdromIoIrqFunc1()" ); break;
+    case 0x91: printf ( "CdromDmaIrqFunc1()" ); break;
+    case 0x92: printf ( "CdromIoIrqFunc2()" ); break;
+    case 0x93: printf ( "CdromDmaIrqFunc2()" ); break;
+    case 0x94: printf ( "CdromGetInt5errCode(dst1,dst2)" ); break;
+    case 0x95: printf ( "CdInitSubFunc()" ); break;
+    case 0x96: printf ( "AddCDROMDevice()" ); break;
+    case 0x97: printf ( "AddMemCardDevice() ;DTL-H2000: SystemError" ); break;
+    case 0x98:
+      printf ( "AddDuartTtyDevice() ;DTL-H2000: "
+               "AddAdconsTtyDevice ;PS2: SystemError" );
+      break;
+    case 0x99: printf ( "AddDummyTtyDevice()" ); break;
+    case 0x9A: printf ( "SystemError ;DTL-H: AddMessageWindowDevice" ); break;
+    case 0x9B: printf ( "SystemError ;DTL-H: AddCdromSimDevice" ); break;
+    case 0x9C: printf ( "SetConf(num_EvCB,num_TCB,stacktop)" ); break;
+    case 0x9D:
+      printf ( "GetConf(num_EvCB_dst,num_TCB_dst,stacktop_dst)" );
+      break;
+    case 0x9E: printf ( "SetCdromIrqAutoAbort(type,flag)" ); break;
+    case 0x9F: printf ( "SetMemSize(megabytes)" ); break;
+    case 0xA0: printf ( "WarmBoot()" ); break;
+    case 0xA1: printf ( "SystemErrorBootOrDiskFailure(type,errorcode)" ); break;
+    case 0xA2: printf ( "EnqueueCdIntr()  ;with prio=0 (fixed)" ); break;
+    case 0xA3: printf ( "DequeueCdIntr()" ); break;
+    case 0xA4:
+      printf ( "CdGetLbn(filename) ;"
+               "get 1st sector number (or garbage when not found)" );
+      break;
+    case 0xA5: printf ( "CdReadSector(count,sector,buffer)" ); break;
+    case 0xA6: printf ( "CdGetStatus()" ); break;
+    case 0xA7: printf ( "bu_callback_okay()" ); break;
+    case 0xA8: printf ( "bu_callback_err_write()" ); break;
+    case 0xA9: printf ( "bu_callback_err_busy()" ); break;
+    case 0xAA: printf ( "bu_callback_err_eject()" ); break;
+    case 0xAB: printf ( "_card_info(port)" ); break;
+    case 0xAC: printf ( "_card_async_load_directory(port)" ); break;
+    case 0xAD: printf ( "set_card_auto_format(flag)" ); break;
+    case 0xAE: printf ( "bu_callback_err_prev_write()" ); break;
+    case 0xAF:
+      printf ( "card_write_test(port)  ;CEX-1000: jump_to_00000000h" );
+      break;
+    case 0xB0: printf ( "return 0 ;CEX-1000: jump_to_00000000h" ); break;
+    case 0xB1: printf ( "return 0 ;CEX-1000: jump_to_00000000h" ); break;
+    case 0xB2:
+      printf ( "ioabort_raw(param);CEX-1000: jump_to_00000000h" );
+      break;
+    case 0xB3: printf ( "return 0 ;CEX-1000: jump_to_00000000h" ); break;
+    case 0xB4:
+      printf ( "GetSystemInfo(index) ;CEX-1000: jump_to_00000000h" );
+      break;
+    case 0xB5 ... 0xBF: printf ( "N/A ;jump_to_00000000h" ); break;
+    default: printf ( "Unknown_00A0(%Xh)", PSX_cpu_regs.gpr[9].v );
+    }
+  if ( show_args )
+    printf ( "  ARGS: %X, %X, %X, %X, ...",
+             PSX_cpu_regs.gpr[4].v,
+             PSX_cpu_regs.gpr[5].v,
+             PSX_cpu_regs.gpr[6].v,
+             PSX_cpu_regs.gpr[7].v );
+  printf ( "\n" );
+  
+} // end dbg_bios_func_trace_00A0
+
+
+static void
+dbg_bios_func_trace_00B0 (void)
+{
+  
+  bool show_args;
+
+
+  show_args= true;
+  SHOW_PC_CC;
+  printf ( "[BIOS] " );
+  switch ( PSX_cpu_regs.gpr[9].v )
+    {
+    case 0x00: printf ( "alloc_kernel_memory(size)" ); break;
+    case 0x01: printf ( "free_kernel_memory(buf)" ); break;
+    case 0x02: printf ( "init_timer(t,reload,flags)" ); break;
+    case 0x03: printf ( "get_timer(t)" ); break;
+    case 0x04: printf ( "enable_timer_irq(t)" ); break;
+    case 0x05: printf ( "disable_timer_irq(t)" ); break;
+    case 0x06: printf ( "restart_timer(t)" ); break;
+    case 0x07:
+      printf ( "DeliverEvent(class=%Xh, spec=%Xh)",
+               PSX_cpu_regs.gpr[4].v, PSX_cpu_regs.gpr[5].v );
+      show_args= false;
+      break;
+    case 0x08:
+      printf ( "OpenEvent(class=%Xh, spec=%Xh, mode=%Xh, func=%Xh)",
+               PSX_cpu_regs.gpr[4].v, PSX_cpu_regs.gpr[5].v,
+               PSX_cpu_regs.gpr[6].v, PSX_cpu_regs.gpr[7].v);
+      show_args= false;
+      break;
+    case 0x09:
+      printf ( "CloseEvent(event=%Xh)", PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x0A:
+      printf ( "WaitEvent(event=%Xh)", PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x0B:
+      printf ( "TestEvent(event=%Xh)", PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x0C:
+      printf ( "EnableEvent(event=%Xh)", PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x0D:
+      printf ( "DisableEvent(event=%Xh)", PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x0E: printf ( "OpenThread(reg_PC,reg_SP_FP,reg_GP)" ); break;
+    case 0x0F: printf ( "CloseThread(handle)" ); break;
+    case 0x10: printf ( "ChangeThread(handle)" ); break;
+    case 0x11: printf ( "jump_to_00000000h" ); break;
+    case 0x12: printf ( "InitPad(buf1,siz1,buf2,siz2)" ); break;
+    case 0x13: printf ( "StartPad()" ); break;
+    case 0x14: printf ( "StopPad()" ); break;
+    case 0x15:
+      printf ( "OutdatedPadInitAndStart(type,button_dest,unused,unused)" );
+      break;
+    case 0x16: printf ( "OutdatedPadGetButtons()" ); break;
+    case 0x17: printf ( "ReturnFromException()" ); show_args= false; break;
+    case 0x18: printf ( "SetDefaultExitFromException()" ); break;
+    case 0x19: printf ( "SetCustomExitFromException(addr)" ); break;
+    case 0x1A: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x1B: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x1C: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x1D: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x1E: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x1F: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x20:
+      printf ( "UnDeliverEvent(class=%Xh, spec=%Xh)",
+               PSX_cpu_regs.gpr[4].v, PSX_cpu_regs.gpr[5].v );
+      show_args= false;
+      break;
+    case 0x21: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x22: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x23: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x24: printf ( "jump_to_00000000h" ); break;
+    case 0x25: printf ( "jump_to_00000000h" ); break;
+    case 0x26: printf ( "jump_to_00000000h" ); break;
+    case 0x27: printf ( "jump_to_00000000h" ); break;
+    case 0x28: printf ( "jump_to_00000000h" ); break;
+    case 0x29: printf ( "jump_to_00000000h" ); break;
+    case 0x2A: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x2B: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x2C: printf ( "jump_to_00000000h" ) ; break;
+    case 0x2D: printf ( "jump_to_00000000h" ); break;
+    case 0x2E: printf ( "jump_to_00000000h" ); break;
+    case 0x2F: printf ( "jump_to_00000000h" ); break;
+    case 0x30: printf ( "jump_to_00000000h" ); break;
+    case 0x31: printf ( "jump_to_00000000h" ); break;
+    case 0x32: printf ( "FileOpen(filename,accessmode)" ); break;
+    case 0x33: printf ( "FileSeek(fd,offset,seektype)" ); break;
+    case 0x34: printf ( "FileRead(fd,dst,length)" ); break;
+    case 0x35:
+      printf ( "FileWrite(fd=%d,src=%Xh,length=%d)",
+               (int) PSX_cpu_regs.gpr[4].v,
+               PSX_cpu_regs.gpr[5].v,
+               (int) PSX_cpu_regs.gpr[6].v );
+      show_args= false;
+      break;
+    case 0x36: printf ( "FileClose(fd)" ); break;
+    case 0x37: printf ( "FileIoctl(fd,cmd,arg)" ); break;
+    case 0x38: printf ( "exit(exitcode)" ); break;
+    case 0x39: printf ( "FileGetDeviceFlag(fd)" ); break;
+    case 0x3A: printf ( "FileGetc(fd)" ); break;
+    case 0x3B: printf ( "FilePutc(char,fd)" ); break;
+    case 0x3C: printf ( "std_in_getchar()" ); break;
+    case 0x3D:
+      printf ( "std_out_putchar('%c')", (int) PSX_cpu_regs.gpr[4].v );
+      show_args= false;
+      break;
+    case 0x3E: printf ( "std_in_gets(dst)" ); break;
+    case 0x3F: printf ( "std_out_puts(src)" ); break;
+    case 0x40: printf ( "chdir(name)" ); break;
+    case 0x41: printf ( "FormatDevice(devicename)" ); break;
+    case 0x42: printf ( "firstfile(filename,direntry)" ); break;
+    case 0x43: printf ( "nextfile(direntry)" ); break;
+    case 0x44: printf ( "FileRename(old_filename,new_filename)" ); break;
+    case 0x45: printf ( "FileDelete(filename)" ); break;
+    case 0x46: printf ( "FileUndelete(filename)" ); break;
+    case 0x47:
+      printf ( "AddDevice(device_info);"
+               " subfunction for AddXxxDevice functions" );
+      break;
+    case 0x48: printf ( "RemoveDevice(device_name_lowercase)" ); break;
+    case 0x49: printf ( "PrintInstalledDevices()" ); break;
+    case 0x4A: printf ( "InitCard(pad_enable)  ;uses/destroys k0/k1" ); break;
+    case 0x4B: printf ( "StartCard()" ); break;
+    case 0x4C: printf ( "StopCard()" ); break;
+    case 0x4D:
+      printf ( "_card_info_subfunc(port) ;subfunction for _card_info" );
+      break;
+    case 0x4E: printf ( "write_card_sector(port,sector,src)" ); break;
+    case 0x4F: printf ( "read_card_sector(port,sector,dst)" ); break;
+    case 0x50: printf ( "allow_new_card()" ); break;
+    case 0x51: printf ( "Krom2RawAdd(shiftjis_code)" ); break;
+    case 0x52: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x53: printf ( "Krom2Offset(shiftjis_code)" ); break;
+    case 0x54: printf ( "GetLastError()" ); break;
+    case 0x55: printf ( "GetLastFileError(fd)" ); break;
+    case 0x56: printf ( "GetC0Table" ); break;
+    case 0x57: printf ( "GetB0Table" ); break;
+    case 0x58: printf ( "get_bu_callback_port()" ); break;
+    case 0x59: printf ( "testdevice(devicename)" ); break;
+    case 0x5A: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x5B: printf ( "ChangeClearPad(int)" ); break;
+    case 0x5C: printf ( "get_card_status(slot)" ); break;
+    case 0x5D: printf ( "wait_card_status(slot)" ); break;
+    case 0x5E ... 0xFF: printf ( "N/A ;jump_to_00000000h" ); break;
+    default: printf ( "Unknown_00B0(%Xh)", PSX_cpu_regs.gpr[9].v );
+    }
+  if ( show_args )
+    printf ( "  ARGS: %Xh, %Xh, %Xh, %Xh, ...",
+             PSX_cpu_regs.gpr[4].v,
+             PSX_cpu_regs.gpr[5].v,
+             PSX_cpu_regs.gpr[6].v,
+             PSX_cpu_regs.gpr[7].v );
+  printf ( "\n" );
+  
+} // end dbg_bios_func_trace_00B0
+
+
+static void
+dbg_bios_func_trace_00C0 (void)
+{
+
+  bool show_args;
+
+
+  show_args= true;
+  SHOW_PC_CC;
+  printf ( "[BIOS] " );
+  switch ( PSX_cpu_regs.gpr[9].v&0x7F )
+    {
+    case 0x00:
+      printf ( "EnqueueTimerAndVblankIrqs(priority) ;used with prio=1" );
+      break;
+    case 0x01:
+      printf ( "EnqueueSyscallHandler(priority) ;used with prio=0" );
+      break;
+    case 0x02: printf ( "SysEnqIntRP(priority,struc)" ); break;
+    case 0x03: printf ( "SysDeqIntRP(priority,struc)" ); break;
+    case 0x04: printf ( "get_free_EvCB_slot()" ); break;
+    case 0x05: printf ( "get_free_TCB_slot()" ); break;
+    case 0x06: printf ( "ExceptionHandler()" ); break;
+    case 0x07:
+      printf ( "InstallExceptionHandlers()  ;destroys/uses k0/k1" );
+      break;
+    case 0x08: printf ( "SysInitMemory(addr,size)" ); break;
+    case 0x09: printf ( "SysInitKernelVariables()" ); break;
+    case 0x0A: printf ( "ChangeClearRCnt(t,flag)" ); break;
+    case 0x0B: printf ( "SystemError  ;PS2: return 0" ); break;
+    case 0x0C: printf ( "InitDefInt(priority) ;used with prio=3" ); break;
+    case 0x0D: printf ( "SetIrqAutoAck(irq,flag)" ); break;
+    case 0x0E: printf ( "return 0 ;DTL-H2000: dev_sio_init" ); break;
+    case 0x0F: printf ( "return 0 ;DTL-H2000: dev_sio_open" ); break;
+    case 0x10: printf ( "return 0 ;DTL-H2000: dev_sio_in_out" ); break;
+    case 0x11: printf ( "return 0 ;DTL-H2000: dev_sio_ioctl" ); break;
+    case 0x12: printf ( "InstallDevices(ttyflag)" ); break;
+    case 0x13: printf ( "FlushStdInOutPut()" ); break;
+    case 0x14: printf ( "return 0 ;DTL-H2000: SystemError" ); break;
+    case 0x15: printf ( "tty_cdevinput(circ,char)" ); break;
+    case 0x16: printf ( "tty_cdevscan()" ); break;
+    case 0x17:
+      printf ( "tty_circgetc(circ) ;uses r5 as garbage txt for ioabort" );
+      break;
+    case 0x18: printf ( "tty_circputc(char,circ)" ); break;
+    case 0x19: printf ( "ioabort(txt1,txt2)" ); break;
+    case 0x1A:
+      printf ( "set_card_find_mode(mode)  ;0=normal, 1=find deleted files" );
+      break;
+    case 0x1B:
+      printf ( "KernelRedirect(ttyflag) ;PS2: ttyflag=1 causes SystemError" );
+      break;
+    case 0x1C: printf ( "AdjustA0Table()" ); break;
+    case 0x1D: printf ( "get_card_find_mode()" ); break;
+    case 0x1E ... 0x7F: printf ( "N/A ;jump_to_00000000h" ); break;
+    default: printf ( "Unknown_00C0(%Xh)", PSX_cpu_regs.gpr[9].v );
+    }
+  if ( show_args )
+    printf ( "  ARGS: %X, %X, %X, %X, ...",
+             PSX_cpu_regs.gpr[4].v,
+             PSX_cpu_regs.gpr[5].v,
+             PSX_cpu_regs.gpr[6].v,
+             PSX_cpu_regs.gpr[7].v );
+  printf ( "\n" );
+  
+} // end dbg_bios_func_trace_00C0
+
+
+static void
+dbg_bios_func_trace (
+                     const uint32_t  addr,
+                     void           *udata
+                     )
+{
+
+  switch ( addr )
+    {
+    case 0x000000A0:
+    case 0x800000A0:
+    case 0xA00000A0:
+      dbg_bios_func_trace_00A0 ();
+      break;
+    case 0x000000B0:
+    case 0x800000B0:
+    case 0xA00000B0:
+      dbg_bios_func_trace_00B0 ();
+      break;
+    case 0x000000C0:
+    case 0x800000C0:
+    case 0xA00000C0:
+      dbg_bios_func_trace_00C0 ();
+      break;
+    }
+  
+} // end dbg_bios_func_trace
+
+
 
 
 /*********************/
@@ -1721,6 +2259,8 @@ cpu_inst (
   PyObject *ret;
   
 
+  if ( _tracer.dbg_flags&DBG_BIOS_FUNC_TRACE )
+    dbg_bios_func_trace ( addr, udata );
   if ( _tracer.dbg_flags&DBG_CPU_INST )
     return dbg_cpu_inst ( inst, addr, udata );
   
@@ -2772,6 +3312,7 @@ PyInit_PSX (void)
   PyModule_AddIntConstant ( m, "DBG_DMA_TRANSFER", DBG_DMA_TRANSFER );
   PyModule_AddIntConstant ( m, "DBG_GTE_MEM_ACCESS", DBG_GTE_MEM_ACCESS );
   PyModule_AddIntConstant ( m, "DBG_GTE_CMD_TRACE", DBG_GTE_CMD_TRACE );
+  PyModule_AddIntConstant ( m, "DBG_BIOS_FUNC_TRACE", DBG_BIOS_FUNC_TRACE );
 
   // Botons
   PyModule_AddIntConstant ( m, "BUTTON_SELECT", PSX_BUTTON_SELECT );
