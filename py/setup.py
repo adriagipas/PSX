@@ -28,6 +28,7 @@ def pkgconfig(lib,req_version):
         sys.exit()
 
 glib_libs,glib_cflags= pkgconfig('glib-2.0','2.50')
+sdl_libs,sdl_cflags= pkgconfig('sdl2','2.30')
 
 module= Extension ( 'PSX',
                     sources= [ 'psxmodule.c',
@@ -60,8 +61,8 @@ module= Extension ( 'PSX',
                                'CD/src/crc.h',
                                'CD/src/cue.h',
                                'CD/src/utils.h'],
-                    libraries= [ 'SDL' ]+glib_libs,
-                    extra_compile_args= glib_cflags+['-UNDEBUG'],
+                    libraries= sdl_libs+glib_libs,
+                    extra_compile_args= sdl_cflags+glib_cflags+['-UNDEBUG'],
                     define_macros= [('__LITTLE_ENDIAN__',None)],
                     include_dirs= [ '../src', 'CD/src' ])
 

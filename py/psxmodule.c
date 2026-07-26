@@ -23,9 +23,7 @@
  */
 
 #include <Python.h>
-#include <SDL/SDL.h>
-#include <GL/gl.h>
-#include <GL/glext.h>
+#include <SDL.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -75,6 +73,9 @@ int MY_GLOBAL_PRINT=0;
 
 #define NBUFF 4
 
+#define SCREEN_WIDTH 640
+#define SCREEN_HEIGHT 480
+
 
 
 
@@ -107,9 +108,13 @@ static char _initialized;
 static struct
 {
   
-  int          width;
-  int          height;
-  SDL_Surface *surface;
+  int           width;
+  int           height;
+  SDL_Window   *win;
+  SDL_Renderer *renderer;
+  SDL_Texture  *tex;
+  Uint32        pfmt;
+  int           desp_r,desp_g,desp_b,desp_a;
   
 } _screen;
 
@@ -125,7 +130,7 @@ static struct
 /* Estat so. */
 static struct
 {
-  
+
   buffer_t buffers[NBUFF];
   int      buff_in;
   int      buff_out;
@@ -137,6 +142,8 @@ static struct
   double   pos2;
   
 } _audio;
+
+static SDL_AudioDeviceID _dev;
 
 /* BIOS. */
 static uint8_t _bios[PSX_BIOS_SIZE];
@@ -1771,22 +1778,53 @@ sres_changed (
               const int height
               )
 {
+  int r,c,i,pitch;
+  uint8_t *buffer;
+
   
-  /* Nou surface. */
+  // Nou surface.
   _screen.width= width;
   _screen.height= height;
-  //_screen.surface= SDL_SetVideoMode ( width, height, 32, 0 );
-  _screen.surface= SDL_SetVideoMode ( width, height, 32,
-                                      SDL_HWSURFACE | SDL_GL_DOUBLEBUFFER );
-  if ( _screen.surface == NULL )
+
+  // Allibera memòria
+  if ( _screen.tex != NULL ) SDL_DestroyTexture ( _screen.tex );
+
+  // Crea nova textura
+  assert ( width > 0 && height > 0 );
+  _screen.tex= SDL_CreateTexture ( _screen.renderer, SDL_PIXELFORMAT_RGBA32,
+                                   SDL_TEXTUREACCESS_STREAMING,
+                                   width, height );
+  if ( _screen.tex == NULL )
     {
-      fprintf ( stderr, "FATAL ERROR!!!: %s", SDL_GetError () );
+      fprintf ( stderr, "FATAL ERROR!!!: %s\n", SDL_GetError () );
       SDL_Quit ();
       return;
     }
-  SDL_WM_SetCaption ( "PSX", "PSX" );
+  if ( SDL_SetTextureScaleMode ( _screen.tex,  SDL_ScaleModeNearest ) != 0 )
+    {
+      fprintf ( stderr,
+                "FATAL ERROR!!!: no s'ha pogut fixar el tipus d'escalat\n" );
+      SDL_Quit ();
+      return;
+    }
+
+  // Neteja textura
+  if ( SDL_LockTexture ( _screen.tex, NULL, (void **) &buffer, &pitch ) != 0 )
+    {
+      fprintf ( stderr, "FATAL ERROR!!!: %s\n", SDL_GetError () );
+      SDL_Quit ();
+      return;
+    }
+  for ( r= i= 0; r < _screen.height; ++r )
+    {
+      for ( c= 0; c < _screen.width; ++c, ++i )
+        ((uint32_t *) buffer)[c]= 0;
+      buffer+= pitch;
+    }
   
-} /* end sres_changed */
+  SDL_UnlockTexture ( _screen.tex );
+  
+} // end sres_changed
 
 
 static void
@@ -1930,30 +1968,33 @@ init_audio (void)
   Uint8 *mem;
   
   
-  /* Únic camp de l'estat que s'inicialitza abans. */
+  // Únic camp de l'estat que s'inicialitza abans.
   _audio.buff_out= _audio.buff_in= 0;
   for ( n= 0; n < NBUFF; ++n ) _audio.buffers[n].full= 0;
   
-  /* Inicialitza. */
+  // Inicialitza.
   desired.freq= 44100;
-  desired.format= AUDIO_S16;
+  desired.format= AUDIO_S16SYS;
   desired.channels= 2;
   desired.samples= 2048;
   desired.size= 8192;
   desired.callback= audio_callback;
   desired.userdata= NULL;
-  if ( SDL_OpenAudio ( &desired, &obtained ) == -1 )
+  _dev= SDL_OpenAudioDevice ( NULL, 0, &desired, &obtained, 0 );
+  if ( _dev == 0 )
     return SDL_GetError ();
   if ( obtained.format != desired.format )
     {
       fprintf ( stderr, "Força format audio\n" );
-      SDL_CloseAudio ();
-      if ( SDL_OpenAudio ( &desired, NULL ) == -1 )
+      SDL_CloseAudioDevice ( _dev ); _dev= 0;
+      _dev= SDL_OpenAudioDevice ( NULL, 0, &desired, NULL, 0 );
+      if ( _dev == 0 )
         return SDL_GetError ();
       obtained= desired;
     }
+  SDL_PauseAudioDevice ( _dev, 0 );
   
-  /* Inicialitza estat. */
+  // Inicialitza estat.
   mem= malloc ( obtained.size*NBUFF );
   for ( n= 0; n < NBUFF; ++n, mem+= obtained.size )
     _audio.buffers[n].v= (int16_t *) mem;
@@ -1963,7 +2004,7 @@ init_audio (void)
   _audio.nsamples= _audio.size/2;
   if ( obtained.freq > 44100 )
     {
-      SDL_CloseAudio ();
+      SDL_CloseAudioDevice ( _dev ); _dev= 0;
       return "Freqüència massa gran";
     }
   _audio.ratio= 44100 / (double) obtained.freq;
@@ -1971,17 +2012,24 @@ init_audio (void)
   
   return NULL;
   
-} /* end init_audio */
+} // end init_audio
 
 
 static void
 close_audio (void)
 {
+
+  if ( _dev != 0 )
+    {
+      SDL_PauseAudioDevice ( _dev, 1 );
+      SDL_CloseAudioDevice ( _dev );
+    }
+  if ( _audio.buffers[0].v != NULL )
+    free ( _audio.buffers[0].v );
+  _audio.buffers[0].v= NULL;
+  _dev= 0;
   
-  SDL_CloseAudio ();
-  free ( _audio.buffers[0].v );
-  
-} /* end close_audio */
+} // end close_audio
 
 
 
@@ -2025,9 +2073,8 @@ check_signals (
   while ( SDL_PollEvent ( &event ) )
     switch ( event.type )
       {
-      case SDL_ACTIVEEVENT:
-        if ( event.active.state&SDL_APPINPUTFOCUS &&
-             !event.active.gain )
+      case SDL_WINDOWEVENT:
+        if ( event.window.event == SDL_WINDOWEVENT_FOCUS_LOST )
           _control.pad1.buttons= 0;
         break;
       case SDL_KEYDOWN:
@@ -2142,19 +2189,8 @@ check_signals (
       default: break;
       }
   
-} /* end check_signals */
+} // end check_signals
 
-
-static Uint32
-reorder_color (
-               const Uint32 color
-               )
-{
-  return 
-    (((uint32_t) (((uint8_t *) &color)[0]))<<16) |
-    (((uint32_t) (((uint8_t *) &color)[1]))<<8) |
-    (((uint32_t) (((uint8_t *) &color)[2]))<<0);
-} // end reorder_color
 
 static void
 update_screen (
@@ -2164,32 +2200,38 @@ update_screen (
                )
 {
 
-  Uint32 *data;
-  int i;
-  //static gint64 t= 0;gint64 aux;
-
+  int r,c,i,pitch;
+  uint8_t *buffer;
   
-  //aux= g_get_monotonic_time ();printf("%ld\n",aux-t);t=aux;
-  //return;
+  
   if ( g->width != _screen.width || g->height != _screen.height )
     sres_changed ( g->width, g->height );
-  if ( SDL_MUSTLOCK ( _screen.surface ) )
-    SDL_LockSurface ( _screen.surface );
-  data= _screen.surface->pixels;
-  for ( i= 0; i < _screen.width*_screen.height; ++i )
-    data[i]= reorder_color ( (Uint32) fb[i] );
-  
-  if ( SDL_MUSTLOCK ( _screen.surface ) )
-    SDL_UnlockSurface ( _screen.surface );
 
-  //SDL_UpdateRect(_screen.surface, 0, 0, 0, 0);
-  if ( SDL_Flip ( _screen.surface ) == -1 )
+  // Còpia.
+  if ( SDL_LockTexture ( _screen.tex, NULL, (void **) &buffer, &pitch ) != 0 )
     {
       fprintf ( stderr, "ERROR FATAL !!!: %s\n", SDL_GetError () );
       SDL_Quit ();
     }
+  for ( r= i= 0; r < g->height; ++r )
+    {
+      for ( c= 0; c < g->width; ++c, ++i )
+        ((uint32_t *) buffer)[c]= fb[i];
+      buffer+= pitch;
+    }
+  SDL_UnlockTexture ( _screen.tex );
+
+  // Dibuixa
+  // --> Prepara
+  SDL_RenderClear ( _screen.renderer );
+  SDL_SetRenderDrawColor ( _screen.renderer, 0, 0, 0, 0xff );
+  SDL_RenderFillRect ( _screen.renderer, NULL );
+  // --> Dibuixa textura
+  SDL_RenderCopy ( _screen.renderer, _screen.tex, NULL, NULL );
+  // --> Acaba
+  SDL_RenderPresent ( _screen.renderer );
   
-} /* end update_screen */
+} // end update_screen
 
 
 static void
@@ -2488,19 +2530,109 @@ PSX_close_ (
   if ( !_initialized ) Py_RETURN_NONE;
 
   if ( _renderer != NULL ) PSX_renderer_free ( _renderer );
+  if ( _screen.tex != NULL ) SDL_DestroyTexture ( _screen.tex );
+  if ( _screen.renderer != NULL ) SDL_DestroyRenderer ( _screen.renderer );
+  if ( _screen.win != NULL ) SDL_DestroyWindow ( _screen.win );
+  _screen.win= NULL;
+  _screen.renderer= NULL;
+  _screen.tex= NULL;
   _renderer= NULL;
   close_audio ();
   SDL_Quit ();
-  /*
-  if ( _sram != NULL ) free ( _sram );
-  if ( _eeprom != NULL ) free ( _eeprom );
-  */
   _initialized= false;
   /*Py_XDECREF ( _tracer.obj );*/
   
   Py_RETURN_NONE;
   
-} /* end PSX_close_ */
+} // end PSX_close_
+
+
+static int
+get_desp (
+          const Uint32 mask
+          )
+{
+
+  switch ( mask )
+    {
+    case 0x000000ff: return 0;
+    case 0x0000ff00: return 8;
+    case 0x00ff0000: return 16;
+    case 0xff000000: return 24;
+    default: return -1;
+    }
+  
+} // end get_desp
+
+
+// RGBA entès com l'únic que importa és l'ordre a nivell de byte: R,
+// G, B, A.
+static bool
+check_pfmt_is_rgba (
+                    const uint32_t rmask,
+                    const uint32_t gmask,
+                    const uint32_t bmask,
+                    const uint32_t amask
+                    )
+{
+
+  uint32_t val;
+
+
+  ((uint8_t *) &val)[0]= 0x11;
+  ((uint8_t *) &val)[1]= 0x22;
+  ((uint8_t *) &val)[2]= 0x33;
+  ((uint8_t *) &val)[3]= 0x44;
+
+  return ( (val&rmask) == 0x11 &&
+           (val&gmask) == 0x22 &&
+           (val&bmask) == 0x33 &&
+           (amask==0 || (val&amask) == 0x44) );
+  
+} // end check_pfmt_is_rgba
+
+
+static bool
+calc_desp_rgba (void)
+{
+
+  Uint32 rmask, gmask, bmask, amask;
+  int bpp;
+  
+  
+  // Obté màscares
+  if ( !SDL_PixelFormatEnumToMasks( _screen.pfmt, &bpp, &rmask,
+                                    &gmask, &bmask, &amask ) )
+    {
+      PyErr_SetString ( PSXError, SDL_GetError () );
+      return false;
+    }
+  if ( bpp != 32 ) goto error;
+  
+  // Obté desplaçaments.
+  _screen.desp_r= get_desp ( rmask );
+  _screen.desp_g= get_desp ( gmask );
+  _screen.desp_b= get_desp ( bmask );
+  _screen.desp_a= get_desp ( amask );
+  if ( amask == 0 ) _screen.desp_a= 32; // Indica que no es gasta _screen.desp_a
+  if ( _screen.desp_r == -1 || _screen.desp_g == -1 ||
+       _screen.desp_b == -1 || _screen.desp_a == -1 )
+    goto error;
+
+  /*
+  if ( !check_pfmt_is_rgba ( rmask, gmask, bmask, amask ) )
+    {
+      PyErr_SetString ( PSXError, "No és RGBA" );
+      return false;
+    }
+  */
+  return true;
+  
+ error:
+  PyErr_SetString ( PSXError, "format de píxel no suportat" );
+  return false;
+  
+} // end calc_desp_rgba
 
 
 static PyObject *
@@ -2542,10 +2674,15 @@ PSX_init_module (
   if ( !PyArg_ParseTuple ( args, "O!", &PyBytes_Type, &bytes ) )
     return NULL;
 
-  /* Prepara. */
+  // Prepara.
   _renderer= NULL;
+  _screen.win= NULL;
+  _screen.renderer= NULL;
+  _screen.tex= NULL;
+  _dev= 0;
+  _audio.buffers[0].v= NULL;
   
-  /* Comprova BIOS. */
+  // Comprova BIOS.
   size= PyBytes_Size ( bytes );
   if ( size != PSX_BIOS_SIZE )
     {
@@ -2554,22 +2691,44 @@ PSX_init_module (
     }
   memcpy ( _bios, PyBytes_AS_STRING ( bytes ), sizeof(_bios) );
   
-  /* Renderer. */
+  // Renderer.
   _renderer= PSX_create_default_renderer ( update_screen, NULL );
-  //_renderer= PSX_create_stats_renderer ();
   if ( _renderer == NULL ) goto error;
   
-  /* SDL */
+  // SDL
   if ( SDL_Init ( SDL_INIT_VIDEO |
-                  SDL_INIT_NOPARACHUTE |
+                  SDL_INIT_EVENTS |
                   SDL_INIT_AUDIO ) == -1 )
     {
       PyErr_SetString ( PSXError, SDL_GetError () );
       goto error;
     }
-  _screen.surface= NULL;
+  _screen.win= SDL_CreateWindow ( "PSX",
+                                  SDL_WINDOWPOS_UNDEFINED,
+                                  SDL_WINDOWPOS_UNDEFINED,
+                                  SCREEN_WIDTH, SCREEN_HEIGHT,
+                                  SDL_WINDOW_SHOWN );
+  if ( _screen.win == NULL )
+    {
+      PyErr_SetString ( PSXError, SDL_GetError () );
+      goto error;
+    }
+  _screen.pfmt= SDL_GetWindowPixelFormat ( _screen.win );
+  if ( _screen.pfmt == SDL_PIXELFORMAT_UNKNOWN )
+    {
+      PyErr_SetString ( PSXError, SDL_GetError () );
+      goto error;
+    }
+  _screen.renderer= SDL_CreateRenderer ( _screen.win, -1,
+                                         SDL_RENDERER_ACCELERATED );
+  if ( _screen.renderer == NULL )
+    {
+      PyErr_SetString ( PSXError, SDL_GetError () );
+      goto error;
+    }
   _screen.width= -1;
   _screen.height= -1;
+  
   if ( (err= init_audio ()) != NULL )
     {
       PyErr_SetString ( PSXError, err );
@@ -2577,31 +2736,38 @@ PSX_init_module (
       return NULL; 
     }
   
-  /* Control. */
+  // Control.
   _control.pad1.buttons= 0;
   _control.pad2.buttons= 0;
   
-  /* Tracer. */
+  // Tracer.
   _tracer.obj= NULL;
   _tracer.dbg_flags= 0;
   _tracer.pc= 0;
   _tracer.cc= 0;
   _tracer.steps= 0;
 
-  /* Inicialitza el simulador. */
+  // Inicialitza el simulador.
   PSX_init ( _bios, &frontend, NULL, _renderer );
   PSX_plug_controllers ( PSX_CONTROLLER_STANDARD, PSX_CONTROLLER_STANDARD);
   _tracer.pc= PSX_cpu_regs.pc;
 
   // Disc.
   _disc= NULL;
+
+  // Calcula els desplaçaments.
+  if ( !calc_desp_rgba () ) goto error;
   
   _initialized= true;
   
   Py_RETURN_NONE;
 
  error:
+  if ( _screen.renderer != NULL ) SDL_DestroyRenderer ( _screen.renderer );
+  if ( _screen.win != NULL ) SDL_DestroyWindow ( _screen.win );
   if ( _renderer != NULL ) PSX_renderer_free ( _renderer );
+  _screen.win= NULL;
+  _screen.renderer= NULL;
   _renderer= NULL;
   return NULL;
   
@@ -3036,6 +3202,51 @@ PSX_release_button (
 } // end PSX_release_button
 
 
+static PyObject *
+PSX_write_mem (
+               PyObject *self,
+               PyObject *args
+               )
+{
+  
+  unsigned int addr, data;
+
+  
+  CHECK_INITIALIZED;
+
+  if ( !PyArg_ParseTuple ( args, "II", &addr, &data ) )
+    return NULL;
+  PSX_mem_write ( addr, data );
+  
+  Py_RETURN_NONE;
+  
+} // end PSX_write_mem
+
+
+static PyObject *
+PSX_read_mem (
+              PyObject *self,
+              PyObject *args
+              )
+{
+  
+  unsigned int addr, data;
+  
+  
+  CHECK_INITIALIZED;
+
+  if ( !PyArg_ParseTuple ( args, "I", &addr ) )
+    return NULL;
+  // NOTA!!! No estic comprovant si falla
+  data= 0xFFAABBFF;
+  PSX_mem_read ( addr, &data );
+
+  return PyLong_FromUnsignedLong ( (unsigned long) data );
+  
+} // end PSX_write_read
+
+
+
 
 
 /************************/
@@ -3075,6 +3286,10 @@ static PyMethodDef PSXMethods[]=
       "Press button" },
     { "release_button", PSX_release_button, METH_VARARGS,
       "Release button" },
+    { "write_mem", PSX_write_mem, METH_VARARGS,
+      "Write a 32bit value into the specified memory address" },
+    { "read_mem", PSX_read_mem, METH_VARARGS,
+      "Read a 32bit value from the specified memory address" },
     
     { NULL, NULL, 0, NULL }
   };
