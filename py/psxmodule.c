@@ -2565,33 +2565,6 @@ get_desp (
 } // end get_desp
 
 
-// RGBA entès com l'únic que importa és l'ordre a nivell de byte: R,
-// G, B, A.
-static bool
-check_pfmt_is_rgba (
-                    const uint32_t rmask,
-                    const uint32_t gmask,
-                    const uint32_t bmask,
-                    const uint32_t amask
-                    )
-{
-
-  uint32_t val;
-
-
-  ((uint8_t *) &val)[0]= 0x11;
-  ((uint8_t *) &val)[1]= 0x22;
-  ((uint8_t *) &val)[2]= 0x33;
-  ((uint8_t *) &val)[3]= 0x44;
-
-  return ( (val&rmask) == 0x11 &&
-           (val&gmask) == 0x22 &&
-           (val&bmask) == 0x33 &&
-           (amask==0 || (val&amask) == 0x44) );
-  
-} // end check_pfmt_is_rgba
-
-
 static bool
 calc_desp_rgba (void)
 {
@@ -2618,14 +2591,7 @@ calc_desp_rgba (void)
   if ( _screen.desp_r == -1 || _screen.desp_g == -1 ||
        _screen.desp_b == -1 || _screen.desp_a == -1 )
     goto error;
-
-  /*
-  if ( !check_pfmt_is_rgba ( rmask, gmask, bmask, amask ) )
-    {
-      PyErr_SetString ( PSXError, "No és RGBA" );
-      return false;
-    }
-  */
+  
   return true;
   
  error:
@@ -2671,6 +2637,7 @@ PSX_init_module (
   
 
   if ( _initialized ) Py_RETURN_NONE;
+  srand ( 23 );
   if ( !PyArg_ParseTuple ( args, "O!", &PyBytes_Type, &bytes ) )
     return NULL;
 
